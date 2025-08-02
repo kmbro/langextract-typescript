@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangExtract Visualization</title>
+</head>
+<body>
+    
+<style>
+.lx-highlight {
+  position: relative;
+  border-radius: 3px;
+  padding: 1px 2px;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+.lx-highlight .lx-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  background: #333;
+  color: #fff;
+  text-align: left;
+  border-radius: 4px;
+  padding: 6px 8px;
+  position: absolute;
+  z-index: 1000;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  max-width: 240px;
+  white-space: normal;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.lx-highlight:hover .lx-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+.lx-animated-wrapper {
+  max-width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  margin: 20px;
+}
+.lx-controls {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.lx-button-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.lx-control-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.lx-control-btn:hover {
+  background: #0056b3;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.lx-progress-container {
+  margin-bottom: 12px;
+}
+.lx-progress-slider {
+  width: 100%;
+  margin: 0;
+  appearance: none;
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+}
+.lx-progress-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #007bff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.lx-progress-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: #007bff;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.lx-status-text {
+  text-align: center;
+  font-size: 13px;
+  color: #6c757d;
+  margin-top: 8px;
+  font-weight: 500;
+}
+.lx-text-window {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  white-space: pre-wrap;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  line-height: 1.7;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.lx-attributes-panel {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  font-size: 14px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.lx-current-highlight {
+  text-decoration: underline;
+  text-decoration-color: #dc3545;
+  text-decoration-thickness: 3px;
+  font-weight: bold;
+  animation: lx-pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(220, 53, 69, 0.3);
+}
+@keyframes lx-pulse {
+  0% {
+    text-decoration-color: #dc3545;
+    box-shadow: 0 0 8px rgba(220, 53, 69, 0.3);
+  }
+  50% {
+    text-decoration-color: #c82333;
+    box-shadow: 0 0 12px rgba(220, 53, 69, 0.5);
+  }
+  100% {
+    text-decoration-color: #dc3545;
+    box-shadow: 0 0 8px rgba(220, 53, 69, 0.3);
+  }
+}
+.lx-legend {
+  font-size: 13px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #dee2e6;
+  font-weight: 600;
+  color: #495057;
+}
+.lx-label {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-right: 8px;
+  margin-bottom: 4px;
+  color: #000;
+  font-weight: 500;
+  font-size: 12px;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+.lx-attr-key {
+  font-weight: 600;
+  color: #007bff;
+  letter-spacing: 0.3px;
+}
+.lx-attr-value {
+  font-weight: 400;
+  color: #495057;
+  letter-spacing: 0.2px;
+}
+
+/* Add optimizations with larger fonts and better readability for GIFs */
+.lx-gif-optimized .lx-text-window {
+  font-size: 18px;
+  line-height: 1.8;
+  padding: 20px;
+}
+.lx-gif-optimized .lx-attributes-panel {
+  font-size: 16px;
+  padding: 16px 20px;
+}
+.lx-gif-optimized .lx-current-highlight {
+  text-decoration-thickness: 4px;
+}
+.lx-gif-optimized .lx-legend {
+  font-size: 15px;
+}
+.lx-gif-optimized .lx-label {
+  font-size: 14px;
+  padding: 6px 10px;
+}
+</style>
+    <div class="lx-animated-wrapper">
+      <div class="lx-attributes-panel">
+        <div class="lx-legend">Highlights Legend: <span class="lx-label" style="background-color:#D2E3FC;">EMAIL</span> <span class="lx-label" style="background-color:#C8E6C9;">LOCATION</span> <span class="lx-label" style="background-color:#FEF0C3;">ORGANIZATION</span> <span class="lx-label" style="background-color:#F9DEDC;">PERSON</span> <span class="lx-label" style="background-color:#FFDDBE;">PHONE</span></div>
+        <div id="attributesContainer"></div>
+      </div>
+      <div class="lx-text-window" id="textWindow">
+        <span class="lx-highlight lx-current-highlight" data-idx="0" style="background-color:#F9DEDC;">John Smith</span> is a software engineer at <span class="lx-highlight" data-idx="1" style="background-color:#FEF0C3;">Google</span>. He lives in <span class="lx-highlight" data-idx="2" style="background-color:#C8E6C9;">San Francisco, California</span>. His email is <span class="lx-highlight" data-idx="3" style="background-color:#D2E3FC;">john.smith@google.com</span> and his phone number is <span class="lx-highlight" data-idx="4" style="background-color:#FFDDBE;">(555) 123-4567.</span>
+      </div>
+      <div class="lx-controls">
+        <div class="lx-button-row">
+          <button class="lx-control-btn" onclick="playPause()">▶️ Play</button>
+          <button class="lx-control-btn" onclick="prevExtraction()">⏮ Previous</button>
+          <button class="lx-control-btn" onclick="nextExtraction()">⏭ Next</button>
+        </div>
+        <div class="lx-progress-container">
+          <input type="range" id="progressSlider" class="lx-progress-slider"
+                 min="0" max="4" value="0"
+                 onchange="jumpToExtraction(this.value)">
+        </div>
+        <div class="lx-status-text">
+          Entity <span id="entityInfo">1/5</span> |
+          Pos <span id="posInfo">[0-10]</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        const extractions = [{"index":0,"class":"PERSON","text":"John Smith","color":"#F9DEDC","startPos":0,"endPos":10,"beforeText":"","extractionText":"John Smith","afterText":" is a software engineer at Google. He lives in San Francisco, California. His email is john.smith@google.com and his phone number is (555) 123-4567.","attributesHtml":"<div><strong>class:</strong> PERSON</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">role</span>: <span class=\"lx-attr-value\">software engineer</span>, <span class=\"lx-attr-key\">company</span>: <span class=\"lx-attr-value\">Google</span>}</div>"},{"index":1,"class":"ORGANIZATION","text":"Google","color":"#FEF0C3","startPos":37,"endPos":43,"beforeText":"John Smith is a software engineer at ","extractionText":"Google","afterText":". He lives in San Francisco, California. His email is john.smith@google.com and his phone number is (555) 123-4567.","attributesHtml":"<div><strong>class:</strong> ORGANIZATION</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">type</span>: <span class=\"lx-attr-value\">technology company</span>}</div>"},{"index":2,"class":"LOCATION","text":"San Francisco, California","color":"#C8E6C9","startPos":57,"endPos":82,"beforeText":"John Smith is a software engineer at Google. He lives in ","extractionText":"San Francisco, California","afterText":". His email is john.smith@google.com and his phone number is (555) 123-4567.","attributesHtml":"<div><strong>class:</strong> LOCATION</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">city</span>: <span class=\"lx-attr-value\">San Francisco</span>, <span class=\"lx-attr-key\">state</span>: <span class=\"lx-attr-value\">California</span>}</div>"},{"index":3,"class":"EMAIL","text":"john.smith@google.com","color":"#D2E3FC","startPos":97,"endPos":118,"beforeText":"John Smith is a software engineer at Google. He lives in San Francisco, California. His email is ","extractionText":"john.smith@google.com","afterText":" and his phone number is (555) 123-4567.","attributesHtml":"<div><strong>class:</strong> EMAIL</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">domain</span>: <span class=\"lx-attr-value\">google.com</span>}</div>"},{"index":4,"class":"PHONE","text":"(555) 123-4567","color":"#FFDDBE","startPos":143,"endPos":158,"beforeText":"John Smith is a software engineer at Google. He lives in San Francisco, California. His email is john.smith@google.com and his phone number is ","extractionText":"(555) 123-4567.","afterText":"","attributesHtml":"<div><strong>class:</strong> PHONE</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">area_code</span>: <span class=\"lx-attr-value\">555</span>}</div>"}];
+        let currentIndex = 0;
+        let isPlaying = false;
+        let animationInterval = null;
+        let animationSpeed = 1;
+
+        function updateDisplay() {
+          const extraction = extractions[currentIndex];
+          if (!extraction) return;
+
+          document.getElementById('attributesContainer').innerHTML = extraction.attributesHtml;
+          document.getElementById('entityInfo').textContent = (currentIndex + 1) + '/' + extractions.length;
+          document.getElementById('posInfo').textContent = '[' + extraction.startPos + '-' + extraction.endPos + ']';
+          document.getElementById('progressSlider').value = currentIndex;
+
+          const playBtn = document.querySelector('.lx-control-btn');
+          if (playBtn) playBtn.textContent = isPlaying ? '⏸ Pause' : '▶️ Play';
+
+          const prevHighlight = document.querySelector('.lx-text-window .lx-current-highlight');
+          if (prevHighlight) prevHighlight.classList.remove('lx-current-highlight');
+          const currentSpan = document.querySelector('.lx-text-window span[data-idx="' + currentIndex + '"]');
+          if (currentSpan) {
+            currentSpan.classList.add('lx-current-highlight');
+            currentSpan.scrollIntoView({block: 'center', behavior: 'smooth'});
+          }
+        }
+
+        function nextExtraction() {
+          currentIndex = (currentIndex + 1) % extractions.length;
+          updateDisplay();
+        }
+
+        function prevExtraction() {
+          currentIndex = (currentIndex - 1 + extractions.length) % extractions.length;
+          updateDisplay();
+        }
+
+        function jumpToExtraction(index) {
+          currentIndex = parseInt(index);
+          updateDisplay();
+        }
+
+        function playPause() {
+          if (isPlaying) {
+            clearInterval(animationInterval);
+            isPlaying = false;
+          } else {
+            animationInterval = setInterval(nextExtraction, animationSpeed * 1000);
+            isPlaying = true;
+          }
+          updateDisplay();
+        }
+
+        window.playPause = playPause;
+        window.nextExtraction = nextExtraction;
+        window.prevExtraction = prevExtraction;
+        window.jumpToExtraction = jumpToExtraction;
+
+        updateDisplay();
+      })();
+    </script>
+</body>
+</html>

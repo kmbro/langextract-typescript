@@ -1,0 +1,55 @@
+{
+  "name": "langextract",
+  "version": "1.0.0",
+  "description": "A TypeScript library for extracting structured and grounded information from text using LLMs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.ts",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "visualize": "npx ts-node bin/visualize.ts"
+  },
+  "keywords": [
+    "nlp",
+    "information-extraction",
+    "llm",
+    "ai",
+    "typescript",
+    "gemini",
+    "openai"
+  ],
+  "author": "kmbro",
+  "originalAuthor": "Google LLC",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.0.0",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "js-yaml": "^4.1.0",
+    "uuid": "^9.0.0"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kmbro/langextract-typescript.git"
+  }
+}

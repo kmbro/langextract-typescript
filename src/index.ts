@@ -79,6 +79,7 @@ export async function extract(
     modelUrl?: string;
     baseURL?: string;
     extractionPasses?: number;
+    maxTokens?: number;
   } = {}
 ): Promise<AnnotatedDocument | AnnotatedDocument[]> {
   const {
@@ -99,6 +100,7 @@ export async function extract(
     modelUrl,
     baseURL,
     extractionPasses = 1,
+    maxTokens,
   } = options;
 
   if (!examples || examples.length === 0) {
@@ -134,6 +136,7 @@ export async function extract(
         temperature,
         maxWorkers,
         baseURL,
+        maxTokens,
       });
       break;
     case "ollama":
@@ -142,6 +145,7 @@ export async function extract(
         modelUrl: modelUrl || "http://localhost:11434",
         structuredOutputFormat: formatType === FormatType.JSON ? "json" : "yaml",
         temperature,
+        maxTokens,
       });
       break;
     case "gemini":
@@ -154,6 +158,7 @@ export async function extract(
         temperature,
         maxWorkers,
         modelUrl,
+        maxTokens,
       });
       break;
   }
@@ -169,6 +174,7 @@ export async function extract(
   const annotator = new Annotator(languageModel, promptTemplate, {
     formatType,
     fenceOutput,
+    maxTokens,
   });
 
   // Process input

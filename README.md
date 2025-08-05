@@ -137,9 +137,10 @@ The main function for extracting structured information from text.
 - `maxWorkers`: `number` - Maximum parallel workers (default: 10)
 - `additionalContext`: `string` - Additional context for extraction
 - `debug`: `boolean` - Enable debug mode (default: true)
-- `modelUrl`: `string` - Custom model URL (for Ollama)
+- `modelUrl`: `string` - Custom model URL (for Ollama and Gemini)
 - `baseURL`: `string` - Custom base URL (for OpenAI)
 - `extractionPasses`: `number` - Number of extraction passes (default: 1)
+- `maxTokens`: `number` - Maximum tokens in the response (default: 2048)
 
 ### Core Types
 
@@ -260,6 +261,69 @@ const model = new OllamaLanguageModel({
   model: "llama2:latest",
   modelUrl: "http://localhost:11434",
   temperature: 0.7,
+});
+```
+
+### Response Control
+
+#### Limiting Response Length with maxTokens
+
+You can control the maximum number of tokens in the model's response using the `maxTokens` option:
+
+```typescript
+// Limit Gemini response to 100 tokens
+const result = await extract("Extract person information from this text.", {
+  examples: examples,
+  apiKey: "your-api-key",
+  maxTokens: 100, // Short, concise responses
+});
+
+// Limit OpenAI response to 200 tokens
+const result = await extract("Extract person information from this text.", {
+  examples: examples,
+  modelType: "openai",
+  apiKey: "your-openai-api-key",
+  maxTokens: 200, // Moderate response length
+});
+
+// Limit Ollama response to 150 tokens
+const result = await extract("Extract person information from this text.", {
+  examples: examples,
+  modelType: "ollama",
+  modelUrl: "http://localhost:11434",
+  maxTokens: 150, // Local model with token limit
+});
+```
+
+#### Custom Model URLs
+
+You can override the default API endpoints for custom deployments:
+
+```typescript
+// Use custom Gemini endpoint (useful for self-hosted instances)
+const result = await extract("Extract person information from this text.", {
+  examples: examples,
+  apiKey: "your-api-key",
+  modelType: "gemini",
+  modelUrl: "https://your-custom-gemini-endpoint.com", // Custom URL
+  maxTokens: 500,
+});
+
+// Use custom OpenAI endpoint
+const result = await extract("Extract person information from this text.", {
+  examples: examples,
+  modelType: "openai",
+  apiKey: "your-openai-api-key",
+  baseURL: "https://your-custom-openai-endpoint.com", // Custom base URL
+  maxTokens: 300,
+});
+
+// Use custom Ollama endpoint
+const result = await extract("Extract person information from this text.", {
+  examples: examples,
+  modelType: "ollama",
+  modelUrl: "http://your-custom-ollama-server:11434", // Custom Ollama server
+  maxTokens: 200,
 });
 ```
 

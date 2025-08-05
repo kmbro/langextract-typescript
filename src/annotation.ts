@@ -88,6 +88,7 @@ export interface AnnotatorOptions {
   formatType?: FormatType;
   attributeSuffix?: string;
   fenceOutput?: boolean;
+  maxTokens?: number;
 }
 
 export class Annotator {
@@ -96,6 +97,7 @@ export class Annotator {
   private formatType: FormatType;
   private attributeSuffix: string;
   private fenceOutput: boolean;
+  private maxTokens?: number;
 
   constructor(languageModel: BaseLanguageModel, promptTemplate: PromptTemplateStructured, options: AnnotatorOptions = {}) {
     this.languageModel = languageModel;
@@ -103,6 +105,7 @@ export class Annotator {
     this.formatType = options.formatType ?? FormatType.YAML;
     this.attributeSuffix = options.attributeSuffix ?? ATTRIBUTE_SUFFIX;
     this.fenceOutput = options.fenceOutput ?? false;
+    this.maxTokens = options.maxTokens;
   }
 
   async annotateDocuments(
@@ -231,7 +234,9 @@ export class Annotator {
 
       for (const chunk of chunks) {
         const prompt = this.generatePrompt(chunk.text, document.additionalContext);
-        const modelOutputs = await this.languageModel.infer([prompt]);
+        const modelOutputs = await this.languageModel.infer([prompt], {
+          maxDecodeSteps: this.maxTokens,
+        });
 
         if (modelOutputs.length > 0 && modelOutputs[0].length > 0) {
           const output = modelOutputs[0][0].output;
@@ -278,7 +283,9 @@ export class Annotator {
 
         for (const chunk of chunks) {
           const prompt = this.generatePrompt(chunk.text, document.additionalContext);
-          const modelOutputs = await this.languageModel.infer([prompt]);
+          const modelOutputs = await this.languageModel.infer([prompt], {
+            maxDecodeSteps: this.maxTokens,
+          });
 
           if (modelOutputs.length > 0 && modelOutputs[0].length > 0) {
             const output = modelOutputs[0][0].output;

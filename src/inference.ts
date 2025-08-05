@@ -51,6 +51,7 @@ export interface GeminiConfig {
   temperature: number;
   maxWorkers: number;
   modelUrl?: string;
+  maxTokens?: number;
 }
 
 export interface OpenAIConfig {
@@ -61,6 +62,7 @@ export interface OpenAIConfig {
   temperature: number;
   maxWorkers: number;
   baseURL?: string;
+  maxTokens?: number;
 }
 
 export class GeminiLanguageModel implements BaseLanguageModel {
@@ -74,6 +76,7 @@ export class GeminiLanguageModel implements BaseLanguageModel {
       formatType: FormatType.JSON,
       temperature: 0.0,
       maxWorkers: 10,
+      maxTokens: 2048,
       ...config,
     };
     this.constraint = { constraintType: "none" as any };
@@ -98,7 +101,7 @@ export class GeminiLanguageModel implements BaseLanguageModel {
   private async processSinglePrompt(prompt: string, options: InferenceOptions): Promise<ScoredOutput> {
     const config = {
       temperature: options.temperature ?? this.config.temperature,
-      maxOutputTokens: options.maxDecodeSteps ?? 2048,
+      maxOutputTokens: options.maxDecodeSteps ?? this.config.maxTokens ?? 2048,
       ...options,
     };
 
@@ -114,7 +117,8 @@ export class GeminiLanguageModel implements BaseLanguageModel {
   }
 
   private async callGeminiAPI(prompt: string, config: any): Promise<string> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.config.modelId}:generateContent`;
+    const baseUrl = this.config.modelUrl || "https://generativelanguage.googleapis.com";
+    const url = `${baseUrl}/v1beta/models/${this.config.modelId}:generateContent`;
 
     const requestBody: any = {
       contents: [
@@ -186,6 +190,7 @@ export class OpenAILanguageModel implements BaseLanguageModel {
       temperature: 0.0,
       maxWorkers: 10,
       baseURL: "https://api.openai.com/v1",
+      maxTokens: 2048,
       ...config,
     };
     this.constraint = { constraintType: "none" as any };
@@ -210,7 +215,7 @@ export class OpenAILanguageModel implements BaseLanguageModel {
   private async processSinglePrompt(prompt: string, options: InferenceOptions): Promise<ScoredOutput> {
     const config = {
       temperature: options.temperature ?? this.config.temperature,
-      maxTokens: options.maxDecodeSteps ?? 2048,
+      maxTokens: options.maxDecodeSteps ?? this.config.maxTokens ?? 2048,
       ...options,
     };
 
@@ -240,9 +245,9 @@ export class OpenAILanguageModel implements BaseLanguageModel {
       max_tokens: config.maxTokens,
     };
 
-    // Add JSON response format only if schema is available
+    // Add JSON response format when formatType is JSON
     // OpenAI requires the word "json" in the prompt when using response_format: { type: "json_object" }
-    if (this.config.openAISchema) {
+    if (this.config.formatType === FormatType.JSON) {
       requestBody.response_format = { type: "json_object" };
     }
 
@@ -312,6 +317,7 @@ export interface OllamaConfig {
   modelUrl: string;
   structuredOutputFormat: string;
   temperature: number;
+  maxTokens?: number;
 }
 
 export class OllamaLanguageModel implements BaseLanguageModel {
@@ -324,6 +330,7 @@ export class OllamaLanguageModel implements BaseLanguageModel {
       modelUrl: "http://localhost:11434",
       structuredOutputFormat: "json",
       temperature: 0.8,
+      maxTokens: 2048,
       ...config,
     };
     this.constraint = { constraintType: "none" as any };
@@ -352,6 +359,7 @@ export class OllamaLanguageModel implements BaseLanguageModel {
       temperature: options.temperature ?? this.config.temperature,
       stream: false,
       format: this.config.structuredOutputFormat,
+      num_predict: options.maxDecodeSteps ?? this.config.maxTokens ?? 2048,
     };
 
     try {

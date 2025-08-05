@@ -50,6 +50,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/kmbro/langextract-typescript.git"
+    "url": "git+https://github.com/kmbro/langextract-typescript.git"
   }
 }

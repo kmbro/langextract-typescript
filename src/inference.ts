@@ -33,7 +33,34 @@ export class InferenceOutputError extends Error {
   }
 }
 
+/**
+ * Base interface for language model implementations.
+ * Custom language models must implement this interface to be compatible with LangExtract.
+ * 
+ * @example
+ * // Custom language model implementation
+ * class MyCustomModel implements BaseLanguageModel {
+ *   async infer(batchPrompts: string[], options?: InferenceOptions): Promise<ScoredOutput[][]> {
+ *     const results: ScoredOutput[][] = [];
+ *     for (const prompt of batchPrompts) {
+ *       // Your custom inference logic here
+ *       const response = await myModelCall(prompt);
+ *       results.push([{ score: 1.0, output: response }]);
+ *     }
+ *     return results;
+ *   }
+ * }
+ */
 export interface BaseLanguageModel {
+  /**
+   * Perform inference on a batch of prompts.
+   * 
+   * @param batchPrompts - Array of prompt strings to process
+   * @param options - Optional inference parameters like temperature and maxDecodeSteps
+   * @returns Promise resolving to an array of arrays of ScoredOutput objects.
+   *          The outer array corresponds to each prompt, the inner array contains
+   *          one or more scored responses for that prompt.
+   */
   infer(batchPrompts: string[], options?: InferenceOptions): Promise<ScoredOutput[][]>;
 }
 

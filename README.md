@@ -7,7 +7,7 @@ A TypeScript translation of the original Python LangExtract library by Google LL
 ## Features
 
 - **Structured Information Extraction**: Extract entities, relationships, and structured data from text
-- **Multiple LLM Support**: Works with Google Gemini, OpenAI, Ollama, and other LLM providers
+- **Multiple LLM Support**: Works with Google Gemini, OpenAI, Ollama, and custom language model implementations
 - **Schema Generation**: Automatically generates JSON schemas from examples for better extraction
 - **Text Alignment**: Aligns extracted information with original text positions
 - **Interactive Visualization**: Built-in HTML visualization with animations and controls
@@ -141,6 +141,37 @@ The main function for extracting structured information from text.
 - `baseURL`: `string` - Custom base URL (for OpenAI)
 - `extractionPasses`: `number` - Number of extraction passes (default: 1)
 - `maxTokens`: `number` - Maximum tokens in the response (default: 2048)
+- `languageModel`: `BaseLanguageModel` - Custom language model implementation (optional)
+
+### Custom Language Models
+
+You can provide your own language model implementation by implementing the `BaseLanguageModel` interface:
+
+```typescript
+import { extract, BaseLanguageModel, InferenceOptions, ScoredOutput } from "langextract";
+
+class MyCustomModel implements BaseLanguageModel {
+  async infer(batchPrompts: string[], options?: InferenceOptions): Promise<ScoredOutput[][]> {
+    const results: ScoredOutput[][] = [];
+    
+    for (const prompt of batchPrompts) {
+      // Your custom inference logic here
+      const response = await myModelCall(prompt, options);
+      results.push([{ score: 1.0, output: response }]);
+    }
+    
+    return results;
+  }
+}
+
+// Use with LangExtract
+const customModel = new MyCustomModel();
+const result = await extract("Text to analyze", {
+  languageModel: customModel,  // Pass your custom model
+  examples: [/* your examples */],
+  // Note: apiKey is not required when using a custom model
+});
+```
 
 ### Core Types
 

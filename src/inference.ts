@@ -83,19 +83,37 @@ export class GeminiLanguageModel implements BaseLanguageModel {
   }
 
   async infer(batchPrompts: string[], options: InferenceOptions = {}): Promise<ScoredOutput[][]> {
-    const results: ScoredOutput[][] = [];
+    // Use parallel processing for batches larger than 1
+    if (batchPrompts.length > 1 && this.config.maxWorkers > 1) {
+      const promises: Promise<ScoredOutput[]>[] = [];
 
-    for (const prompt of batchPrompts) {
-      try {
-        const result = await this.processSinglePrompt(prompt, options);
-        results.push([result]);
-      } catch (error) {
-        console.error("Error processing prompt:", error);
-        results.push([{ score: 0, output: undefined }]);
+      for (const prompt of batchPrompts) {
+        promises.push(
+          this.processSinglePrompt(prompt, options)
+            .then(result => [result])
+            .catch(() => {
+              return [{ score: 0, output: undefined }];
+            })
+        );
       }
-    }
 
-    return results;
+      // Process all prompts concurrently
+      return await Promise.all(promises);
+    } else {
+      // Sequential processing for single prompt or when maxWorkers is 1
+      const results: ScoredOutput[][] = [];
+
+      for (const prompt of batchPrompts) {
+        try {
+          const result = await this.processSinglePrompt(prompt, options);
+          results.push([result]);
+        } catch {
+          results.push([{ score: 0, output: undefined }]);
+        }
+      }
+
+      return results;
+    }
   }
 
   private async processSinglePrompt(prompt: string, options: InferenceOptions): Promise<ScoredOutput> {
@@ -197,19 +215,37 @@ export class OpenAILanguageModel implements BaseLanguageModel {
   }
 
   async infer(batchPrompts: string[], options: InferenceOptions = {}): Promise<ScoredOutput[][]> {
-    const results: ScoredOutput[][] = [];
+    // Use parallel processing for batches larger than 1
+    if (batchPrompts.length > 1 && this.config.maxWorkers > 1) {
+      const promises: Promise<ScoredOutput[]>[] = [];
 
-    for (const prompt of batchPrompts) {
-      try {
-        const result = await this.processSinglePrompt(prompt, options);
-        results.push([result]);
-      } catch (error) {
-        console.error("Error processing prompt:", error);
-        results.push([{ score: 0, output: undefined }]);
+      for (const prompt of batchPrompts) {
+        promises.push(
+          this.processSinglePrompt(prompt, options)
+            .then(result => [result])
+            .catch(() => {
+              return [{ score: 0, output: undefined }];
+            })
+        );
       }
-    }
 
-    return results;
+      // Process all prompts concurrently
+      return await Promise.all(promises);
+    } else {
+      // Sequential processing for single prompt or when maxWorkers is 1
+      const results: ScoredOutput[][] = [];
+
+      for (const prompt of batchPrompts) {
+        try {
+          const result = await this.processSinglePrompt(prompt, options);
+          results.push([result]);
+        } catch {
+          results.push([{ score: 0, output: undefined }]);
+        }
+      }
+
+      return results;
+    }
   }
 
   private async processSinglePrompt(prompt: string, options: InferenceOptions): Promise<ScoredOutput> {
@@ -337,19 +373,38 @@ export class OllamaLanguageModel implements BaseLanguageModel {
   }
 
   async infer(batchPrompts: string[], options: InferenceOptions = {}): Promise<ScoredOutput[][]> {
-    const results: ScoredOutput[][] = [];
+    // Note: Ollama typically runs locally, so we don't need as much parallelism as cloud APIs
+    // but we still implement it for consistency
+    if (batchPrompts.length > 1) {
+      const promises: Promise<ScoredOutput[]>[] = [];
 
-    for (const prompt of batchPrompts) {
-      try {
-        const result = await this.ollamaQuery(prompt, options);
-        results.push([{ score: 1.0, output: result.response }]);
-      } catch (error) {
-        console.error("Error processing prompt:", error);
-        results.push([{ score: 0, output: undefined }]);
+      for (const prompt of batchPrompts) {
+        promises.push(
+          this.ollamaQuery(prompt, options)
+            .then(result => [{ score: 1.0, output: result.response }])
+            .catch(() => {
+              return [{ score: 0, output: undefined }];
+            })
+        );
       }
-    }
 
-    return results;
+      // Process all prompts concurrently
+      return await Promise.all(promises);
+    } else {
+      // Sequential processing for single prompt
+      const results: ScoredOutput[][] = [];
+
+      for (const prompt of batchPrompts) {
+        try {
+          const result = await this.ollamaQuery(prompt, options);
+          results.push([{ score: 1.0, output: result.response }]);
+        } catch {
+          results.push([{ score: 0, output: undefined }]);
+        }
+      }
+
+      return results;
+    }
   }
 
   private async ollamaQuery(prompt: string, options: InferenceOptions = {}): Promise<any> {

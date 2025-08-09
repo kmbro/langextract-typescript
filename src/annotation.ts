@@ -91,22 +91,31 @@ export interface AnnotatorOptions {
   maxTokens?: number;
 }
 
+interface DocumentWithGuaranteedId extends Document {
+  documentId: string;
+}
+
 export class Annotator {
   private languageModel: BaseLanguageModel;
   private promptGenerator: QAPromptGeneratorImpl;
   private maxTokens?: number;
 
   constructor(languageModel: BaseLanguageModel, promptTemplate: PromptTemplateStructured, options: AnnotatorOptions = {}) {
-    const formatType = options.formatType ?? FormatType.YAML;
-    const attributeSuffix = options.attributeSuffix ?? ATTRIBUTE_SUFFIX;
-    const fenceOutput = options.fenceOutput ?? false;
-    
     this.languageModel = languageModel;
     this.promptGenerator = new QAPromptGeneratorImpl(promptTemplate);
-    this.promptGenerator.formatType = formatType;
-    this.promptGenerator.attributeSuffix = attributeSuffix;
-    this.promptGenerator.fenceOutput = fenceOutput;
+    this.promptGenerator.formatType = options.formatType ?? FormatType.YAML;
+    this.promptGenerator.attributeSuffix = options.attributeSuffix ?? ATTRIBUTE_SUFFIX;
+    this.promptGenerator.fenceOutput = options.fenceOutput ?? false;
     this.maxTokens = options.maxTokens;
+  }
+
+  private guaranteeDocumentIds(documents: Document[]): DocumentWithGuaranteedId[] {
+    for (const document of documents) {
+      if (!document.documentId) {
+        document.documentId = `doc_${Math.random().toString(36).substring(2, 8)}`;
+      }
+    }
+    return documents as DocumentWithGuaranteedId[];
   }
 
   async annotateDocuments(
@@ -119,16 +128,17 @@ export class Annotator {
       extractionPasses?: number;
     } = {}
   ): Promise<AnnotatedDocument[]> {
+    const documentsWithId = this.guaranteeDocumentIds(documents);
     const { maxCharBuffer = 200, batchLength = 1, debug = true, extractionPasses = 1 } = options;
 
     if (extractionPasses === 1) {
-      return this.annotateDocumentsSinglePass(documents, resolver, {
+      return this.annotateDocumentsSinglePass(documentsWithId, resolver, {
         maxCharBuffer,
         batchLength,
         debug,
       });
     } else {
-      return this.annotateDocumentsSequentialPasses(documents, resolver, {
+      return this.annotateDocumentsSequentialPasses(documentsWithId, resolver, {
         maxCharBuffer,
         batchLength,
         debug,
@@ -148,26 +158,19 @@ export class Annotator {
       extractionPasses?: number;
     } = {}
   ): Promise<AnnotatedDocument> {
-    const { maxCharBuffer = 200, batchLength = 1, additionalContext, debug = true, extractionPasses = 1 } = options;
+    const { additionalContext, ...rest } = options;
 
     const document: Document = {
       text,
       additionalContext,
-      documentId: `doc_${uuidv4().substring(0, 8)}`,
     };
 
-    const documents = await this.annotateDocuments([document], resolver, {
-      maxCharBuffer,
-      batchLength,
-      debug,
-      extractionPasses,
-    });
-
+    const documents = await this.annotateDocuments([document], resolver, rest);
     return documents[0];
   }
 
   private async annotateDocumentsSinglePass(
-    documents: Document[],
+    documents: DocumentWithGuaranteedId[],
     resolver: AbstractResolver,
     options: {
       maxCharBuffer: number;
@@ -175,14 +178,7 @@ export class Annotator {
       debug: boolean;
     }
   ): Promise<AnnotatedDocument[]> {
-    const { maxCharBuffer, batchLength, debug } = options;
-
-    // Generate consistent document IDs upfront
-    const documentIds = new Map<Document, string>();
-    for (const document of documents) {
-      const docId = document.documentId || `doc_${Math.random().toString(36).substring(2, 8)}`;
-      documentIds.set(document, docId);
-    }
+    const { maxCharBuffer, batchLength } = options;
 
     // Collect all chunks from all documents (matching Python _document_chunk_iterator)
     const allChunks: Array<{
@@ -191,15 +187,13 @@ export class Annotator {
         tokenOffset: number;
         charOffset: number;
       };
-      document: Document;
-      documentId: string;
+      document: DocumentWithGuaranteedId;
     }> = [];
 
     for (const document of documents) {
       const chunks = this.chunkDocument(document, maxCharBuffer);
-      const docId = documentIds.get(document)!;
       for (const chunk of chunks) {
-        allChunks.push({ chunk, document, documentId: docId });
+        allChunks.push({ chunk, document });
       }
     }
 
@@ -221,7 +215,7 @@ export class Annotator {
 
       // Process results and group by document
       for (let j = 0; j < chunkBatch.length; j++) {
-        const { chunk, documentId } = chunkBatch[j];
+        const { chunk, document } = chunkBatch[j];
         const modelOutputs = batchModelOutputs[j];
 
         if (modelOutputs.length > 0 && modelOutputs[0].output) {
@@ -229,10 +223,10 @@ export class Annotator {
           const extractions = resolver.resolve(output);
           const alignedExtractions = resolver.align(extractions, chunk.text, chunk.tokenOffset, chunk.charOffset);
           
-          if (!documentExtractions.has(documentId)) {
-            documentExtractions.set(documentId, []);
+          if (!documentExtractions.has(document.documentId)) {
+            documentExtractions.set(document.documentId, []);
           }
-          const docExtractions = documentExtractions.get(documentId);
+          const docExtractions = documentExtractions.get(document.documentId);
           if (docExtractions) {
             docExtractions.push(...alignedExtractions);
           }
@@ -242,10 +236,9 @@ export class Annotator {
 
     // Create annotated documents
     for (const document of documents) {
-      const docId = documentIds.get(document)!;
-      const extractions = documentExtractions.get(docId) || [];
+      const extractions = documentExtractions.get(document.documentId) || [];
       const annotatedDocument: AnnotatedDocument = {
-        documentId: docId,
+        documentId: document.documentId,
         text: document.text || "",
         extractions,
         tokenizedText: document.tokenizedText ?? tokenize(document.text || ""),
@@ -257,7 +250,7 @@ export class Annotator {
   }
 
   private async annotateDocumentsSequentialPasses(
-    documents: Document[],
+    documents: DocumentWithGuaranteedId[],
     resolver: AbstractResolver,
     options: {
       maxCharBuffer: number;
@@ -268,13 +261,6 @@ export class Annotator {
   ): Promise<AnnotatedDocument[]> {
     const { maxCharBuffer, batchLength, extractionPasses } = options;
 
-    // Generate consistent document IDs upfront
-    const documentIds = new Map<Document, string>();
-    for (const document of documents) {
-      const docId = document.documentId || `doc_${Math.random().toString(36).substring(2, 8)}`;
-      documentIds.set(document, docId);
-    }
-
     // Collect all chunks from all documents
     const allChunks: Array<{
       chunk: {
@@ -282,15 +268,13 @@ export class Annotator {
         tokenOffset: number;
         charOffset: number;
       };
-      document: Document;
-      documentId: string;
+      document: DocumentWithGuaranteedId;
     }> = [];
 
     for (const document of documents) {
       const chunks = this.chunkDocument(document, maxCharBuffer);
-      const docId = documentIds.get(document)!;
       for (const chunk of chunks) {
-        allChunks.push({ chunk, document, documentId: docId });
+        allChunks.push({ chunk, document });
       }
     }
 
@@ -298,8 +282,7 @@ export class Annotator {
 
     // Initialize extraction arrays for each document
     for (const document of documents) {
-      const docId = documentIds.get(document)!;
-      documentPassExtractions.set(docId, []);
+      documentPassExtractions.set(document.documentId, []);
     }
 
     // Perform multiple extraction passes
@@ -321,7 +304,7 @@ export class Annotator {
 
         // Process results and group by document for this pass
         for (let j = 0; j < chunkBatch.length; j++) {
-          const { chunk, documentId } = chunkBatch[j];
+          const { chunk, document } = chunkBatch[j];
           const modelOutputs = batchModelOutputs[j];
 
           if (modelOutputs.length > 0 && modelOutputs[0].output) {
@@ -329,10 +312,10 @@ export class Annotator {
             const extractions = resolver.resolve(output);
             const alignedExtractions = resolver.align(extractions, chunk.text, chunk.tokenOffset, chunk.charOffset);
             
-            if (!passDocumentExtractions.has(documentId)) {
-              passDocumentExtractions.set(documentId, []);
+            if (!passDocumentExtractions.has(document.documentId)) {
+              passDocumentExtractions.set(document.documentId, []);
             }
-            const passDocExtractions = passDocumentExtractions.get(documentId);
+            const passDocExtractions = passDocumentExtractions.get(document.documentId);
             if (passDocExtractions) {
               passDocExtractions.push(...alignedExtractions);
             }
@@ -342,9 +325,8 @@ export class Annotator {
 
       // Store pass results for each document
       for (const document of documents) {
-        const docId = documentIds.get(document)!;
-        const passExtractions = passDocumentExtractions.get(docId) || [];
-        const docPassExtractions = documentPassExtractions.get(docId);
+        const passExtractions = passDocumentExtractions.get(document.documentId) || [];
+        const docPassExtractions = documentPassExtractions.get(document.documentId);
         if (docPassExtractions) {
           docPassExtractions.push(passExtractions);
         }
@@ -354,12 +336,11 @@ export class Annotator {
     // Create annotated documents with merged extractions
     const results: AnnotatedDocument[] = [];
     for (const document of documents) {
-      const docId = documentIds.get(document)!;
-      const allPassExtractions = documentPassExtractions.get(docId) || [];
+      const allPassExtractions = documentPassExtractions.get(document.documentId) || [];
       const mergedExtractions = mergeNonOverlappingExtractions(allPassExtractions);
 
       const annotatedDocument: AnnotatedDocument = {
-        documentId: docId,
+        documentId: document.documentId,
         text: document.text || "",
         extractions: mergedExtractions,
         tokenizedText: document.tokenizedText ?? tokenize(document.text || ""),

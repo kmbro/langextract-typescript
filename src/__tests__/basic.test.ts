@@ -109,11 +109,11 @@ describe("LangExtract TypeScript", () => {
 
   describe("Extract Function", () => {
     test("should validate required parameters", async () => {
-      await expect(extract("test", { examples: [] })).rejects.toThrow("Examples are required for reliable extraction");
+      await expect(extract("test", { examples: [] } as any)).rejects.toThrow("Examples are required for reliable extraction");
     });
 
     test("should validate API key", async () => {
-      await expect(extract("test", { examples: mockExamples })).rejects.toThrow("API key must be provided");
+      await expect(extract("test", { examples: mockExamples } as any)).rejects.toThrow("API key must be provided for cloud-hosted models");
     });
   });
 

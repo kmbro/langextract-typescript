@@ -99,7 +99,7 @@ describe("InitTest", () => {
         apiKey: "some_api_key",
         fenceOutput: true,
         useSchemaConstraints: false,
-      });
+      } as any);
 
       // Verify the result structure - result is a single AnnotatedDocument
       expect(result).toBeDefined();
@@ -165,7 +165,7 @@ describe("InitTest", () => {
         examples: mockExamples,
         apiKey: "some_api_key",
         useSchemaConstraints: true,
-      });
+      } as any);
 
       // Verify schema was created and passed to the language model
       expect(GeminiLanguageModel).toHaveBeenCalledWith(
@@ -217,7 +217,7 @@ describe("InitTest", () => {
         examples: mockExamples,
         apiKey: "some_api_key",
         formatType: FormatType.YAML,
-      });
+      } as any);
 
       expect(GeminiLanguageModel).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -271,7 +271,7 @@ describe("InitTest", () => {
         examples: mockExamples,
         apiKey: "some_api_key",
         batchLength: 2,
-      });
+      } as any);
 
       // Verify results is an array of AnnotatedDocument
       expect(Array.isArray(results)).toBe(true);
@@ -283,7 +283,7 @@ describe("InitTest", () => {
     });
 
     it("should validate required parameters", async () => {
-      await expect(extract("test", { examples: [] })).rejects.toThrow("Examples are required for reliable extraction");
+      await expect(extract("test", { examples: [] } as any)).rejects.toThrow("Examples are required for reliable extraction");
     });
 
     it("should validate API key", async () => {
@@ -299,7 +299,7 @@ describe("InitTest", () => {
         },
       ];
 
-      await expect(extract("test", { examples: mockExamples })).rejects.toThrow("API key must be provided");
+      await expect(extract("test", { examples: mockExamples } as any)).rejects.toThrow("API key must be provided for cloud-hosted models");
     });
 
     it("should handle custom temperature and other parameters", async () => {
@@ -342,7 +342,7 @@ describe("InitTest", () => {
         batchLength: 5,
         maxWorkers: 5,
         extractionPasses: 2,
-      });
+      } as any);
 
       expect(GeminiLanguageModel).toHaveBeenCalledWith(
         expect.objectContaining({

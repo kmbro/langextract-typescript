@@ -56,37 +56,54 @@ import { GeminiSchemaImpl } from "./schema";
 
 export type ModelType = "gemini" | "openai" | "ollama";
 
+// Discriminated union for extract options to enforce API key for cloud models
+export type BaseExtractOptions = {
+  promptDescription?: string;
+  examples?: ExampleData[];
+  modelId?: string;
+  formatType?: FormatType;
+  maxCharBuffer?: number;
+  temperature?: number;
+  fenceOutput?: boolean;
+  useSchemaConstraints?: boolean;
+  batchLength?: number;
+  maxWorkers?: number;
+  additionalContext?: string;
+  debug?: boolean;
+  extractionPasses?: number;
+  maxTokens?: number;
+};
+
+export type CloudModelOptions = BaseExtractOptions & {
+  modelType?: "gemini" | "openai"; // optional so that default (gemini) still enforces apiKey
+  apiKey: string; // required for cloud models
+  modelUrl?: string; // optional override for Gemini
+  baseURL?: string; // optional override for OpenAI
+};
+
+export type OllamaModelOptions = BaseExtractOptions & {
+  modelType: "ollama";
+  apiKey?: never; // prohibit apiKey for Ollama
+  modelUrl: string; // required for Ollama
+  baseURL?: never;
+};
+
+export type ExtractOptions = CloudModelOptions | OllamaModelOptions;
+
 /**
  * Main extraction function that provides a high-level API for extracting structured information from text.
  */
 export async function extract(
   textOrDocuments: string | Document | Document[],
-  options: {
-    promptDescription?: string;
-    examples?: ExampleData[];
-    modelId?: string;
-    modelType?: ModelType;
-    apiKey?: string;
-    formatType?: FormatType;
-    maxCharBuffer?: number;
-    temperature?: number;
-    fenceOutput?: boolean;
-    useSchemaConstraints?: boolean;
-    batchLength?: number;
-    maxWorkers?: number;
-    additionalContext?: string;
-    debug?: boolean;
-    modelUrl?: string;
-    baseURL?: string;
-    extractionPasses?: number;
-    maxTokens?: number;
-  } = {}
+  options: ExtractOptions
 ): Promise<AnnotatedDocument | AnnotatedDocument[]> {
   const {
     promptDescription = "Extract structured information from the text",
     examples = [],
     modelId = "gemini-2.5-flash",
+    // If modelType omitted, default to gemini (cloud)
     modelType = "gemini",
+    // apiKey is required for cloud, prohibited for ollama (by types); at runtime may be undefined for ollama branch
     apiKey,
     formatType = FormatType.JSON,
     maxCharBuffer = 1000,
@@ -101,13 +118,14 @@ export async function extract(
     baseURL,
     extractionPasses = 1,
     maxTokens,
-  } = options;
+  } = options as any;
 
   if (!examples || examples.length === 0) {
     throw new Error("Examples are required for reliable extraction. Please provide at least one ExampleData object with sample extractions.");
   }
 
-  if (!apiKey) {
+  // Require API key for cloud-hosted models only
+  if (modelType !== "ollama" && !apiKey) {
     throw new Error("API key must be provided for cloud-hosted models via the apiKey parameter or the LANGEXTRACT_API_KEY environment variable");
   }
 
@@ -142,7 +160,7 @@ export async function extract(
     case "ollama":
       languageModel = new OllamaLanguageModel({
         model: modelId,
-        modelUrl: modelUrl || "http://localhost:11434",
+        modelUrl: (modelUrl as string) || "http://localhost:11434",
         structuredOutputFormat: formatType === FormatType.JSON ? "json" : "yaml",
         temperature,
         maxTokens,
@@ -152,7 +170,7 @@ export async function extract(
     default:
       languageModel = new GeminiLanguageModel({
         modelId,
-        apiKey,
+        apiKey: apiKey as string,
         geminiSchema,
         formatType,
         temperature,

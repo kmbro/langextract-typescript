@@ -126,8 +126,8 @@ The main function for extracting structured information from text.
 - `promptDescription`: `string` - Instructions for what to extract
 - `examples`: `ExampleData[]` - Training examples to guide extraction
 - `modelId`: `string` - LLM model ID (default: "gemini-2.5-flash")
-- `modelType`: `"gemini" | "openai" | "ollama"` - LLM provider type (default: "gemini")
-- `apiKey`: `string` - API key for the LLM service
+- `modelType`: `"gemini" | "openai" | "ollama"` - LLM provider type (default: "gemini"). For `"ollama"`, `apiKey` is not used.
+- `apiKey`: `string` - API key for cloud-hosted LLM services (required for `"gemini"` and `"openai"`). Not applicable for `"ollama"`.
 - `formatType`: `FormatType` - Output format (JSON or YAML)
 - `maxCharBuffer`: `number` - Maximum characters per chunk (default: 1000)
 - `temperature`: `number` - Sampling temperature (default: 0.5)
@@ -137,7 +137,7 @@ The main function for extracting structured information from text.
 - `maxWorkers`: `number` - Maximum parallel workers (default: 10)
 - `additionalContext`: `string` - Additional context for extraction
 - `debug`: `boolean` - Enable debug mode (default: true)
-- `modelUrl`: `string` - Custom model URL (for Ollama and Gemini)
+- `modelUrl`: `string` - Custom model URL (for Gemini optional; for Ollama required, e.g., `http://localhost:11434`)
 - `baseURL`: `string` - Custom base URL (for OpenAI)
 - `extractionPasses`: `number` - Number of extraction passes (default: 1)
 - `maxTokens`: `number` - Maximum tokens in the response (default: 2048)
@@ -255,12 +255,22 @@ const model = new OpenAILanguageModel({
 #### Ollama (Local Models)
 
 ```typescript
-import { OllamaLanguageModel } from "langextract";
+import { OllamaLanguageModel, extract } from "langextract";
 
+// Using the model class directly
 const model = new OllamaLanguageModel({
-  model: "llama2:latest",
+  model: "gemma2:latest",
   modelUrl: "http://localhost:11434",
-  temperature: 0.7,
+});
+
+// Or via extract()
+await extract("Some text", {
+  modelType: "ollama",
+  modelId: "gemma2:latest",
+  modelUrl: "http://localhost:11434",
+  examples: [
+    { text: "John is 30.", extractions: [{ extractionClass: "person", extractionText: "John", attributes: { age: "30" } }] },
+  ],
 });
 ```
 

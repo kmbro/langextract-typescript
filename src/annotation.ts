@@ -24,7 +24,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { Document, AnnotatedDocument, Extraction, FormatType } from "./types";
 import { BaseLanguageModel } from "./inference";
-import { PromptTemplateStructured } from "./prompting";
+import { PromptTemplateStructured, QAPromptGeneratorImpl } from "./prompting";
 import { AbstractResolver } from "./resolver";
 import { tokenize } from "./tokenizer";
 
@@ -91,21 +91,31 @@ export interface AnnotatorOptions {
   maxTokens?: number;
 }
 
+interface DocumentWithGuaranteedId extends Document {
+  documentId: string;
+}
+
 export class Annotator {
   private languageModel: BaseLanguageModel;
-  private promptTemplate: PromptTemplateStructured;
-  private formatType: FormatType;
-  private attributeSuffix: string;
-  private fenceOutput: boolean;
+  private promptGenerator: QAPromptGeneratorImpl;
   private maxTokens?: number;
 
   constructor(languageModel: BaseLanguageModel, promptTemplate: PromptTemplateStructured, options: AnnotatorOptions = {}) {
     this.languageModel = languageModel;
-    this.promptTemplate = promptTemplate;
-    this.formatType = options.formatType ?? FormatType.YAML;
-    this.attributeSuffix = options.attributeSuffix ?? ATTRIBUTE_SUFFIX;
-    this.fenceOutput = options.fenceOutput ?? false;
+    this.promptGenerator = new QAPromptGeneratorImpl(promptTemplate);
+    this.promptGenerator.formatType = options.formatType ?? FormatType.YAML;
+    this.promptGenerator.attributeSuffix = options.attributeSuffix ?? ATTRIBUTE_SUFFIX;
+    this.promptGenerator.fenceOutput = options.fenceOutput ?? false;
     this.maxTokens = options.maxTokens;
+  }
+
+  private guaranteeDocumentIds(documents: Document[]): DocumentWithGuaranteedId[] {
+    for (const document of documents) {
+      if (!document.documentId) {
+        document.documentId = `doc_${Math.random().toString(36).substring(2, 8)}`;
+      }
+    }
+    return documents as DocumentWithGuaranteedId[];
   }
 
   async annotateDocuments(
@@ -118,16 +128,17 @@ export class Annotator {
       extractionPasses?: number;
     } = {}
   ): Promise<AnnotatedDocument[]> {
+    const documentsWithId = this.guaranteeDocumentIds(documents);
     const { maxCharBuffer = 200, batchLength = 1, debug = true, extractionPasses = 1 } = options;
 
     if (extractionPasses === 1) {
-      return this.annotateDocumentsSinglePass(documents, resolver, {
+      return this.annotateDocumentsSinglePass(documentsWithId, resolver, {
         maxCharBuffer,
         batchLength,
         debug,
       });
     } else {
-      return this.annotateDocumentsSequentialPasses(documents, resolver, {
+      return this.annotateDocumentsSequentialPasses(documentsWithId, resolver, {
         maxCharBuffer,
         batchLength,
         debug,
@@ -147,26 +158,19 @@ export class Annotator {
       extractionPasses?: number;
     } = {}
   ): Promise<AnnotatedDocument> {
-    const { maxCharBuffer = 200, batchLength = 1, additionalContext, debug = true, extractionPasses = 1 } = options;
+    const { additionalContext, ...rest } = options;
 
     const document: Document = {
       text,
       additionalContext,
-      documentId: `doc_${uuidv4().substring(0, 8)}`,
     };
 
-    const documents = await this.annotateDocuments([document], resolver, {
-      maxCharBuffer,
-      batchLength,
-      debug,
-      extractionPasses,
-    });
-
+    const documents = await this.annotateDocuments([document], resolver, rest);
     return documents[0];
   }
 
   private async annotateDocumentsSinglePass(
-    documents: Document[],
+    documents: DocumentWithGuaranteedId[],
     resolver: AbstractResolver,
     options: {
       maxCharBuffer: number;
@@ -174,140 +178,172 @@ export class Annotator {
       debug: boolean;
     }
   ): Promise<AnnotatedDocument[]> {
-    const { maxCharBuffer, batchLength, debug } = options;
-    const results: AnnotatedDocument[] = [];
+    const { maxCharBuffer, batchLength } = options;
 
-    // Process documents in batches
-    for (let i = 0; i < documents.length; i += batchLength) {
-      const batch = documents.slice(i, i + batchLength);
-      const batchResults = await this.processDocumentBatch(batch, resolver, {
-        maxCharBuffer,
-        debug,
-      });
-      results.push(...batchResults);
-    }
-
-    return results;
-  }
-
-  private async annotateDocumentsSequentialPasses(
-    documents: Document[],
-    resolver: AbstractResolver,
-    options: {
-      maxCharBuffer: number;
-      batchLength: number;
-      debug: boolean;
-      extractionPasses: number;
-    }
-  ): Promise<AnnotatedDocument[]> {
-    const { maxCharBuffer, batchLength, debug, extractionPasses } = options;
-    const results: AnnotatedDocument[] = [];
-
-    // Process documents in batches
-    for (let i = 0; i < documents.length; i += batchLength) {
-      const batch = documents.slice(i, i + batchLength);
-      const batchResults = await this.processDocumentBatchSequentialPasses(batch, resolver, {
-        maxCharBuffer,
-        debug,
-        extractionPasses,
-      });
-      results.push(...batchResults);
-    }
-
-    return results;
-  }
-
-  private async processDocumentBatch(
-    documents: Document[],
-    resolver: AbstractResolver,
-    options: {
-      maxCharBuffer: number;
-      debug: boolean;
-    }
-  ): Promise<AnnotatedDocument[]> {
-    const { maxCharBuffer } = options;
-    const results: AnnotatedDocument[] = [];
+    // Collect all chunks from all documents (matching Python _document_chunk_iterator)
+    const allChunks: Array<{
+      chunk: {
+        text: string;
+        tokenOffset: number;
+        charOffset: number;
+      };
+      document: DocumentWithGuaranteedId;
+    }> = [];
 
     for (const document of documents) {
       const chunks = this.chunkDocument(document, maxCharBuffer);
-      const allExtractions: Extraction[] = [];
-
       for (const chunk of chunks) {
-        const prompt = this.generatePrompt(chunk.text, document.additionalContext);
-        const modelOutputs = await this.languageModel.infer([prompt], {
-          maxDecodeSteps: this.maxTokens,
-        });
+        allChunks.push({ chunk, document });
+      }
+    }
 
-        if (modelOutputs.length > 0 && modelOutputs[0].length > 0) {
-          const output = modelOutputs[0][0].output;
-          if (output) {
-            const extractions = resolver.resolve(output);
-            const alignedExtractions = resolver.align(extractions, chunk.text, chunk.tokenOffset, chunk.charOffset);
-            allExtractions.push(...alignedExtractions);
+    // Process chunks in batches of batchLength (matching Python make_batches_of_textchunk)
+    const results: AnnotatedDocument[] = [];
+    const documentExtractions = new Map<string, Extraction[]>();
+
+    for (let i = 0; i < allChunks.length; i += batchLength) {
+      const chunkBatch = allChunks.slice(i, i + batchLength);
+      
+      // Process this batch of chunks
+      const batchPrompts = chunkBatch.map(item => 
+        this.promptGenerator.render(item.chunk.text, item.document.additionalContext)
+      );
+
+      const batchModelOutputs = await this.languageModel.infer(batchPrompts, {
+        maxDecodeSteps: this.maxTokens,
+      });
+
+      // Process results and group by document
+      for (let j = 0; j < chunkBatch.length; j++) {
+        const { chunk, document } = chunkBatch[j];
+        const modelOutputs = batchModelOutputs[j];
+
+        if (modelOutputs.length > 0 && modelOutputs[0].output) {
+          const output = modelOutputs[0].output;
+          const extractions = resolver.resolve(output);
+          const alignedExtractions = resolver.align(extractions, chunk.text, chunk.tokenOffset, chunk.charOffset);
+          
+          if (!documentExtractions.has(document.documentId)) {
+            documentExtractions.set(document.documentId, []);
+          }
+          const docExtractions = documentExtractions.get(document.documentId);
+          if (docExtractions) {
+            docExtractions.push(...alignedExtractions);
           }
         }
       }
+    }
 
+    // Create annotated documents
+    for (const document of documents) {
+      const extractions = documentExtractions.get(document.documentId) || [];
       const annotatedDocument: AnnotatedDocument = {
         documentId: document.documentId,
-        text: document.text,
-        extractions: allExtractions,
-        tokenizedText: document.tokenizedText ?? tokenize(document.text),
+        text: document.text || "",
+        extractions,
+        tokenizedText: document.tokenizedText ?? tokenize(document.text || ""),
       };
-
       results.push(annotatedDocument);
     }
 
     return results;
   }
 
-  private async processDocumentBatchSequentialPasses(
-    documents: Document[],
+  private async annotateDocumentsSequentialPasses(
+    documents: DocumentWithGuaranteedId[],
     resolver: AbstractResolver,
     options: {
       maxCharBuffer: number;
+      batchLength: number;
       debug: boolean;
       extractionPasses: number;
     }
   ): Promise<AnnotatedDocument[]> {
-    const { maxCharBuffer, extractionPasses } = options;
-    const results: AnnotatedDocument[] = [];
+    const { maxCharBuffer, batchLength, extractionPasses } = options;
+
+    // Collect all chunks from all documents
+    const allChunks: Array<{
+      chunk: {
+        text: string;
+        tokenOffset: number;
+        charOffset: number;
+      };
+      document: DocumentWithGuaranteedId;
+    }> = [];
 
     for (const document of documents) {
       const chunks = this.chunkDocument(document, maxCharBuffer);
-      const allPassExtractions: Extraction[][] = [];
+      for (const chunk of chunks) {
+        allChunks.push({ chunk, document });
+      }
+    }
 
-      // Perform multiple extraction passes
-      for (let pass = 0; pass < extractionPasses; pass++) {
-        const passExtractions: Extraction[] = [];
+    const documentPassExtractions = new Map<string, Extraction[][]>();
 
-        for (const chunk of chunks) {
-          const prompt = this.generatePrompt(chunk.text, document.additionalContext);
-          const modelOutputs = await this.languageModel.infer([prompt], {
-            maxDecodeSteps: this.maxTokens,
-          });
+    // Initialize extraction arrays for each document
+    for (const document of documents) {
+      documentPassExtractions.set(document.documentId, []);
+    }
 
-          if (modelOutputs.length > 0 && modelOutputs[0].length > 0) {
-            const output = modelOutputs[0][0].output;
-            if (output) {
-              const extractions = resolver.resolve(output);
-              const alignedExtractions = resolver.align(extractions, chunk.text, chunk.tokenOffset, chunk.charOffset);
-              passExtractions.push(...alignedExtractions);
+    // Perform multiple extraction passes
+    for (let pass = 0; pass < extractionPasses; pass++) {
+      const passDocumentExtractions = new Map<string, Extraction[]>();
+
+      // Process chunks in batches of batchLength (matching Python behavior)
+      for (let i = 0; i < allChunks.length; i += batchLength) {
+        const chunkBatch = allChunks.slice(i, i + batchLength);
+        
+        // Process this batch of chunks
+        const batchPrompts = chunkBatch.map(item => 
+          this.promptGenerator.render(item.chunk.text, item.document.additionalContext)
+        );
+
+        const batchModelOutputs = await this.languageModel.infer(batchPrompts, {
+          maxDecodeSteps: this.maxTokens,
+        });
+
+        // Process results and group by document for this pass
+        for (let j = 0; j < chunkBatch.length; j++) {
+          const { chunk, document } = chunkBatch[j];
+          const modelOutputs = batchModelOutputs[j];
+
+          if (modelOutputs.length > 0 && modelOutputs[0].output) {
+            const output = modelOutputs[0].output;
+            const extractions = resolver.resolve(output);
+            const alignedExtractions = resolver.align(extractions, chunk.text, chunk.tokenOffset, chunk.charOffset);
+            
+            if (!passDocumentExtractions.has(document.documentId)) {
+              passDocumentExtractions.set(document.documentId, []);
+            }
+            const passDocExtractions = passDocumentExtractions.get(document.documentId);
+            if (passDocExtractions) {
+              passDocExtractions.push(...alignedExtractions);
             }
           }
         }
-
-        allPassExtractions.push(passExtractions);
       }
 
-      // Merge extractions from all passes
+      // Store pass results for each document
+      for (const document of documents) {
+        const passExtractions = passDocumentExtractions.get(document.documentId) || [];
+        const docPassExtractions = documentPassExtractions.get(document.documentId);
+        if (docPassExtractions) {
+          docPassExtractions.push(passExtractions);
+        }
+      }
+    }
+
+    // Create annotated documents with merged extractions
+    const results: AnnotatedDocument[] = [];
+    for (const document of documents) {
+      const allPassExtractions = documentPassExtractions.get(document.documentId) || [];
       const mergedExtractions = mergeNonOverlappingExtractions(allPassExtractions);
 
       const annotatedDocument: AnnotatedDocument = {
         documentId: document.documentId,
-        text: document.text,
+        text: document.text || "",
         extractions: mergedExtractions,
-        tokenizedText: document.tokenizedText ?? tokenize(document.text),
+        tokenizedText: document.tokenizedText ?? tokenize(document.text || ""),
       };
 
       results.push(annotatedDocument);
@@ -351,26 +387,5 @@ export class Annotator {
     return chunks;
   }
 
-  private generatePrompt(text: string, additionalContext?: string): string {
-    // This is a simplified prompt generation
-    // In a real implementation, you'd use the QAPromptGenerator
-    const promptLines: string[] = [this.promptTemplate.description];
 
-    if (additionalContext) {
-      promptLines.push(additionalContext);
-    }
-
-    if (this.promptTemplate.examples.length > 0) {
-      promptLines.push("Examples:");
-      for (const example of this.promptTemplate.examples) {
-        promptLines.push(`Q: ${example.text}`);
-        promptLines.push(`A: ${JSON.stringify({ extractions: example.extractions })}`);
-      }
-    }
-
-    promptLines.push(`Q: ${text}`);
-    promptLines.push("A:");
-
-    return promptLines.join("\n");
-  }
 }

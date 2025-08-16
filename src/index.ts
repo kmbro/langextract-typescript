@@ -58,6 +58,30 @@ export type ModelType = "gemini" | "openai" | "ollama";
 
 /**
  * Main extraction function that provides a high-level API for extracting structured information from text.
+ * 
+ * @param textOrDocuments - The input text(s) to extract information from
+ * @param options - Configuration options for the extraction
+ * @param options.languageModel - Optional custom language model implementation. If provided, this will be used instead of creating a built-in model.
+ *                                 Must implement the BaseLanguageModel interface with an `infer` method that takes batch prompts and returns ScoredOutput[][].
+ * @param options.promptDescription - Description of what to extract
+ * @param options.examples - Example extractions to guide the model
+ * @param options.modelType - Type of built-in model to use when languageModel is not provided ("gemini" | "openai" | "ollama")
+ * @param options.apiKey - API key for cloud models (required when using built-in models)
+ * @returns Promise resolving to annotated document(s) with extracted information
+ * 
+ * @example
+ * // Using a custom language model
+ * const customModel: BaseLanguageModel = {
+ *   async infer(prompts: string[], options?: InferenceOptions): Promise<ScoredOutput[][]> {
+ *     // Your custom implementation here
+ *     return prompts.map(prompt => [{ score: 1.0, output: "your response" }]);
+ *   }
+ * };
+ * 
+ * const result = await extract("Some text to analyze", {
+ *   languageModel: customModel,
+ *   examples: [{ text: "example", extractions: [] }]
+ * });
  */
 export async function extract(
   textOrDocuments: string | Document | Document[],
@@ -80,6 +104,7 @@ export async function extract(
     baseURL?: string;
     extractionPasses?: number;
     maxTokens?: number;
+    languageModel?: BaseLanguageModel;
   } = {}
 ): Promise<AnnotatedDocument | AnnotatedDocument[]> {
   const {
@@ -101,14 +126,11 @@ export async function extract(
     baseURL,
     extractionPasses = 1,
     maxTokens,
+    languageModel,
   } = options;
 
   if (!examples || examples.length === 0) {
     throw new Error("Examples are required for reliable extraction. Please provide at least one ExampleData object with sample extractions.");
-  }
-
-  if (!apiKey) {
-    throw new Error("API key must be provided for cloud-hosted models via the apiKey parameter or the LANGEXTRACT_API_KEY environment variable");
   }
 
   // Create prompt template
@@ -123,44 +145,56 @@ export async function extract(
     geminiSchema = GeminiSchemaImpl.fromExamples(examples);
   }
 
-  // Create language model based on modelType
-  let languageModel: BaseLanguageModel;
+  // Create language model - use custom model if provided, otherwise create based on modelType
+  let languageModelInstance: BaseLanguageModel;
 
-  switch (modelType) {
-    case "openai":
-      languageModel = new OpenAILanguageModel({
-        model: modelId,
-        apiKey,
-        openAISchema: geminiSchema,
-        formatType,
-        temperature,
-        maxWorkers,
-        baseURL,
-        maxTokens,
-      });
-      break;
-    case "ollama":
-      languageModel = new OllamaLanguageModel({
-        model: modelId,
-        modelUrl: modelUrl || "http://localhost:11434",
-        structuredOutputFormat: formatType === FormatType.JSON ? "json" : "yaml",
-        temperature,
-        maxTokens,
-      });
-      break;
-    case "gemini":
-    default:
-      languageModel = new GeminiLanguageModel({
-        modelId,
-        apiKey,
-        geminiSchema,
-        formatType,
-        temperature,
-        maxWorkers,
-        modelUrl,
-        maxTokens,
-      });
-      break;
+  if (languageModel) {
+    // Use the provided custom language model
+    languageModelInstance = languageModel;
+  } else {
+    // Validate API key requirement for built-in models
+    if (!apiKey) {
+      throw new Error("API key must be provided for cloud-hosted models via the apiKey parameter or the LANGEXTRACT_API_KEY environment variable");
+    }
+
+    // Create language model based on modelType
+
+    switch (modelType) {
+      case "openai":
+        languageModelInstance = new OpenAILanguageModel({
+          model: modelId,
+          apiKey,
+          openAISchema: geminiSchema,
+          formatType,
+          temperature,
+          maxWorkers,
+          baseURL,
+          maxTokens,
+        });
+        break;
+      case "ollama":
+        languageModelInstance = new OllamaLanguageModel({
+          model: modelId,
+          modelUrl: modelUrl || "http://localhost:11434",
+          structuredOutputFormat: formatType === FormatType.JSON ? "json" : "yaml",
+          temperature,
+          maxTokens,
+        });
+        break;
+      case "gemini":
+      default:
+        languageModelInstance = new GeminiLanguageModel({
+          modelId,
+          apiKey,
+          geminiSchema,
+          formatType,
+          temperature,
+          maxWorkers,
+          modelUrl,
+          maxTokens,
+        });
+        break;
+    }
   }
 
   // Create resolver
@@ -171,7 +205,7 @@ export async function extract(
   });
 
   // Create annotator
-  const annotator = new Annotator(languageModel, promptTemplate, {
+  const annotator = new Annotator(languageModelInstance, promptTemplate, {
     formatType,
     fenceOutput,
     maxTokens,

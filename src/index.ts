@@ -72,8 +72,12 @@ export {
   sleep,
 } from "./utils";
 
+// Configuration utilities
+export * from "./config";
+
 // Main extraction function
 import { Document, AnnotatedDocument, ExampleData, FormatType } from "./types";
+import { getApiKeyFromEnv, getEnvBool } from "./config";
 import { PromptTemplateStructured } from "./prompting";
 import { Resolver } from "./resolver";
 import { Annotator } from "./annotation";
@@ -120,7 +124,6 @@ export async function extract(
     examples = [],
     modelId = "gemini-2.5-flash",
     modelType = "gemini",
-    apiKey,
     formatType = FormatType.JSON,
     maxCharBuffer = 1000,
     temperature = 0.5,
@@ -129,18 +132,23 @@ export async function extract(
     batchLength = 10,
     maxWorkers = 10,
     additionalContext,
-    debug = true,
     modelUrl,
     baseURL,
     extractionPasses = 1,
     maxTokens,
   } = options;
 
+  // Get debug from options or environment (default false)
+  const debug = options.debug ?? getEnvBool("LANGEXTRACT_DEBUG", false);
+
+  // Get API key from options or environment
+  const apiKey = options.apiKey ?? getApiKeyFromEnv(modelType);
+
   if (!examples || examples.length === 0) {
     throw new Error("Examples are required for reliable extraction. Please provide at least one ExampleData object with sample extractions.");
   }
 
-  if (!apiKey) {
+  if (!apiKey && modelType !== "ollama") {
     throw new Error("API key must be provided for cloud-hosted models via the apiKey parameter or the LANGEXTRACT_API_KEY environment variable");
   }
 

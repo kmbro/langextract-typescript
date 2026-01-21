@@ -49,6 +49,29 @@ export * from "./annotation";
 // Visualization utilities
 export * from "./visualization";
 
+// Error classes (excluding ResolverParsingError which is re-exported from resolver)
+export {
+  LangExtractError,
+  ProviderError,
+  RateLimitError,
+  TimeoutError,
+  AuthenticationError,
+  ValidationError,
+  ProviderNotFoundError,
+  ConfigurationError,
+} from "./errors";
+
+// Utility functions (excluding RetryConfig which is re-exported from providers)
+export {
+  withRetry,
+  RetryError,
+  isRetryable,
+  calculateDelay,
+  getRetryAfterMs,
+  DEFAULT_RETRY_CONFIG,
+  sleep,
+} from "./utils";
+
 // Main extraction function
 import { Document, AnnotatedDocument, ExampleData, FormatType } from "./types";
 import { PromptTemplateStructured } from "./prompting";

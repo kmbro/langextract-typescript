@@ -25,15 +25,12 @@ import * as yaml from "js-yaml";
 import { Extraction, FormatType, AlignmentStatus, CharInterval, ExtractionData, ExtractionsData } from "./types";
 import { Constraint } from "./schema";
 import { tokenize, normalizeToken } from "./tokenizer";
+import { ResolverParsingError } from "./errors";
+
+// Re-export for backward compatibility
+export { ResolverParsingError } from "./errors";
 
 const FUZZY_ALIGNMENT_MIN_THRESHOLD = 0.75;
-
-export class ResolverParsingError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ResolverParsingError";
-  }
-}
 
 export interface AbstractResolver {
   fenceOutput: boolean;

@@ -22,16 +22,10 @@
  */
 
 import { ScoredOutput } from "../types";
+import { RetryConfig } from "../utils/retry";
 
-/**
- * Configuration for retry behavior on transient errors.
- */
-export interface RetryConfig {
-  maxRetries: number;
-  baseDelayMs: number;
-  maxDelayMs: number;
-  retryableStatusCodes: number[];
-}
+// Re-export for backward compatibility
+export { RetryConfig } from "../utils/retry";
 
 /**
  * Options for inference operations.

@@ -75,9 +75,13 @@ export {
 // Configuration utilities
 export * from "./config";
 
+// Validation utilities
+export * from "./validation";
+
 // Main extraction function
 import { Document, AnnotatedDocument, ExampleData, FormatType } from "./types";
 import { getApiKeyFromEnv, getEnvBool } from "./config";
+import { validateAndHandle, ValidationMode } from "./validation";
 import { PromptTemplateStructured } from "./prompting";
 import { Resolver } from "./resolver";
 import { Annotator } from "./annotation";
@@ -117,6 +121,8 @@ export async function extract(
     baseURL?: string;
     extractionPasses?: number;
     maxTokens?: number;
+    /** Validation mode for examples: "strict" throws, "warn" logs, "skip" disables */
+    validateExamples?: ValidationMode;
   } = {}
 ): Promise<AnnotatedDocument | AnnotatedDocument[]> {
   const {
@@ -146,6 +152,12 @@ export async function extract(
 
   if (!examples || examples.length === 0) {
     throw new Error("Examples are required for reliable extraction. Please provide at least one ExampleData object with sample extractions.");
+  }
+
+  // Validate examples if not skipped (default: warn mode)
+  const validationMode = options.validateExamples ?? "warn";
+  if (validationMode !== "skip") {
+    validateAndHandle(examples, { mode: validationMode });
   }
 
   if (!apiKey && modelType !== "ollama") {

@@ -27,6 +27,7 @@ import { BaseLanguageModel } from "./inference";
 import { PromptTemplateStructured, QAPromptGeneratorImpl } from "./prompting";
 import { AbstractResolver } from "./resolver";
 import { tokenize } from "./tokenizer";
+import { getEnvBool } from "./config";
 
 export class DocumentRepeatError extends Error {
   constructor(message: string) {
@@ -129,7 +130,8 @@ export class Annotator {
     } = {}
   ): Promise<AnnotatedDocument[]> {
     const documentsWithId = this.guaranteeDocumentIds(documents);
-    const { maxCharBuffer = 200, batchLength = 1, debug = true, extractionPasses = 1 } = options;
+    const { maxCharBuffer = 200, batchLength = 1, extractionPasses = 1 } = options;
+    const debug = options.debug ?? getEnvBool("LANGEXTRACT_DEBUG", false);
 
     if (extractionPasses === 1) {
       return this.annotateDocumentsSinglePass(documentsWithId, resolver, {

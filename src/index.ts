@@ -34,8 +34,11 @@ export * from "./tokenizer";
 // Prompt generation
 export * from "./prompting";
 
-// Language model inference
+// Language model inference (backward compatibility)
 export * from "./inference";
+
+// Provider plugin system
+export * from "./providers";
 
 // Output resolution
 export * from "./resolver";
@@ -46,13 +49,51 @@ export * from "./annotation";
 // Visualization utilities
 export * from "./visualization";
 
+// Error classes (excluding ResolverParsingError which is re-exported from resolver)
+export {
+  LangExtractError,
+  ProviderError,
+  RateLimitError,
+  TimeoutError,
+  AuthenticationError,
+  ValidationError,
+  ProviderNotFoundError,
+  ConfigurationError,
+} from "./errors";
+
+// Utility functions (excluding RetryConfig which is re-exported from providers)
+export {
+  withRetry,
+  RetryError,
+  isRetryable,
+  calculateDelay,
+  getRetryAfterMs,
+  DEFAULT_RETRY_CONFIG,
+  sleep,
+} from "./utils";
+
+// Configuration utilities
+export * from "./config";
+
+// Validation utilities
+export * from "./validation";
+
 // Main extraction function
 import { Document, AnnotatedDocument, ExampleData, FormatType } from "./types";
-import { GeminiLanguageModel, OllamaLanguageModel, OpenAILanguageModel, BaseLanguageModel } from "./inference";
+import { getApiKeyFromEnv, getEnvBool } from "./config";
+import { validateAndHandle, ValidationMode } from "./validation";
 import { PromptTemplateStructured } from "./prompting";
 import { Resolver } from "./resolver";
 import { Annotator } from "./annotation";
 import { GeminiSchemaImpl } from "./schema";
+import {
+  ProviderRegistry,
+  ProviderConfig,
+  BaseLanguageModel,
+  GeminiLanguageModel,
+  OpenAILanguageModel,
+  OllamaLanguageModel,
+} from "./providers";
 
 export type ModelType = "gemini" | "openai" | "ollama";
 
@@ -80,6 +121,8 @@ export async function extract(
     baseURL?: string;
     extractionPasses?: number;
     maxTokens?: number;
+    /** Validation mode for examples: "strict" throws, "warn" logs, "skip" disables */
+    validateExamples?: ValidationMode;
   } = {}
 ): Promise<AnnotatedDocument | AnnotatedDocument[]> {
   const {
@@ -87,7 +130,6 @@ export async function extract(
     examples = [],
     modelId = "gemini-2.5-flash",
     modelType = "gemini",
-    apiKey,
     formatType = FormatType.JSON,
     maxCharBuffer = 1000,
     temperature = 0.5,
@@ -96,18 +138,29 @@ export async function extract(
     batchLength = 10,
     maxWorkers = 10,
     additionalContext,
-    debug = true,
     modelUrl,
     baseURL,
     extractionPasses = 1,
     maxTokens,
   } = options;
 
+  // Get debug from options or environment (default false)
+  const debug = options.debug ?? getEnvBool("LANGEXTRACT_DEBUG", false);
+
+  // Get API key from options or environment
+  const apiKey = options.apiKey ?? getApiKeyFromEnv(modelType);
+
   if (!examples || examples.length === 0) {
     throw new Error("Examples are required for reliable extraction. Please provide at least one ExampleData object with sample extractions.");
   }
 
-  if (!apiKey) {
+  // Validate examples if not skipped (default: warn mode)
+  const validationMode = options.validateExamples ?? "warn";
+  if (validationMode !== "skip") {
+    validateAndHandle(examples, { mode: validationMode });
+  }
+
+  if (!apiKey && modelType !== "ollama") {
     throw new Error("API key must be provided for cloud-hosted models via the apiKey parameter or the LANGEXTRACT_API_KEY environment variable");
   }
 
@@ -123,45 +176,25 @@ export async function extract(
     geminiSchema = GeminiSchemaImpl.fromExamples(examples);
   }
 
-  // Create language model based on modelType
-  let languageModel: BaseLanguageModel;
+  // Create language model using the provider registry
+  const providerConfig: ProviderConfig = {
+    modelId,
+    apiKey,
+    geminiSchema,
+    temperature,
+    maxWorkers,
+    maxTokens,
+    modelUrl,
+    baseURL,
+  };
 
-  switch (modelType) {
-    case "openai":
-      languageModel = new OpenAILanguageModel({
-        model: modelId,
-        apiKey,
-        openAISchema: geminiSchema,
-        formatType,
-        temperature,
-        maxWorkers,
-        baseURL,
-        maxTokens,
-      });
-      break;
-    case "ollama":
-      languageModel = new OllamaLanguageModel({
-        model: modelId,
-        modelUrl: modelUrl || "http://localhost:11434",
-        structuredOutputFormat: formatType === FormatType.JSON ? "json" : "yaml",
-        temperature,
-        maxTokens,
-      });
-      break;
-    case "gemini":
-    default:
-      languageModel = new GeminiLanguageModel({
-        modelId,
-        apiKey,
-        geminiSchema,
-        formatType,
-        temperature,
-        maxWorkers,
-        modelUrl,
-        maxTokens,
-      });
-      break;
+  // Check if provider is registered
+  if (!ProviderRegistry.has(modelType)) {
+    const available = ProviderRegistry.names().join(", ");
+    throw new Error(`Unknown model type: ${modelType}. Available providers: ${available || "none"}`);
   }
+
+  const languageModel: BaseLanguageModel = ProviderRegistry.createModel(modelType, providerConfig);
 
   // Create resolver
   const resolver = new Resolver({

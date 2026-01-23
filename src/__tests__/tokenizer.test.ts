@@ -50,14 +50,15 @@ describe("TokenizerTest", () => {
       const inputText = "Age:   25\nWeight=70kg.";
       const result = tokenize(inputText);
 
-      // The current tokenizer keeps "70kg" as one token
-      expect(result.tokens).toEqual(["Age", ":", "25", "Weight", "=", "70kg", "."]);
-      expect(result.tokenIntervals).toHaveLength(7);
-      expect(result.charIntervals).toHaveLength(7);
+      // The multi-language tokenizer separates numbers from units (better for extraction)
+      expect(result.tokens).toEqual(["Age", ":", "25", "Weight", "=", "70", "kg", "."]);
+      expect(result.tokenIntervals).toHaveLength(8);
+      expect(result.charIntervals).toHaveLength(8);
 
       // Check that numbers are properly tokenized
       expect(result.tokens[2]).toBe("25");
-      expect(result.tokens[5]).toBe("70kg");
+      expect(result.tokens[5]).toBe("70");
+      expect(result.tokens[6]).toBe("kg");
     });
 
     it("should handle multi-line input", () => {
@@ -110,7 +111,9 @@ describe("TokenizerTest", () => {
       expect(result.tokens).toContain("Doe");
       expect(result.tokens).toContain("ID");
       expect(result.tokens).toContain("67890");
-      expect(result.tokens).toContain("10mg"); // Current tokenizer keeps "10mg" as one token
+      // Multi-language tokenizer separates numbers from units (better for extraction)
+      expect(result.tokens).toContain("10");
+      expect(result.tokens).toContain("mg");
       expect(result.tokens).toContain("daily");
 
       // Check that punctuation is properly separated
@@ -241,11 +244,10 @@ describe("TokenizerTest", () => {
       const inputText = "Café résumé naïve";
       const result = tokenize(inputText);
 
-      // Current tokenizer separates unicode characters
-      expect(result.tokens).toContain("Caf");
-      expect(result.tokens).toContain("é");
-      expect(result.tokens).toContain("r");
-      expect(result.tokens).toContain("sum");
+      // Multi-language tokenizer correctly keeps extended Latin characters together
+      expect(result.tokens).toContain("Café");
+      expect(result.tokens).toContain("résumé");
+      expect(result.tokens).toContain("naïve");
     });
 
     it("should handle numbers with decimals", () => {

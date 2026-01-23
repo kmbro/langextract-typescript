@@ -18,11 +18,19 @@
  */
 
 /**
- * Tokenization utilities.
- *
- * This file re-exports from the tokenizer module for backward compatibility.
- * New code should import directly from "./tokenizer/index" for full multi-language support.
+ * Provider module index - exports all provider-related functionality.
  */
 
-// Re-export everything from the tokenizer module
-export * from "./tokenizer/index";
+// Export base interfaces
+export * from "./base";
+
+// Export registry
+export * from "./registry";
+
+// Export individual providers
+export * from "./gemini";
+export * from "./openai";
+export * from "./ollama";
+
+// Auto-register built-in providers on import
+// The providers are registered when their modules are imported above
